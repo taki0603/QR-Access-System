@@ -51,29 +51,44 @@
         return;
       }
 
-      // ログ送信
-      const payload = new Blob(
-        [JSON.stringify({
-          logId: logId
-        })],
-        {
-          type: 'text/plain;charset=UTF-8'
-        }
-      );
+// ブラウザごとの匿名IDを取得・発行
+function getVisitorId() {
+  let id = localStorage.getItem('visitor_id');
 
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(GAS_URL, payload);
-      } else {
-        fetch(GAS_URL, {
-          method: 'POST',
-          mode: 'no-cors',
-          body: payload,
-          keepalive: true
-        }).catch(() => {});
-      }
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem('visitor_id', id);
+  }
 
-      // ログの応答を待たずに遷移
-      window.location.replace(target.href);
+  return id;
+}
+
+const visitorId = getVisitorId();
+
+// ログ送信
+const payload = new Blob(
+  [JSON.stringify({
+    logId: logId,
+    visitorId: visitorId
+  })],
+  {
+    type: 'text/plain;charset=UTF-8'
+  }
+);
+
+if (navigator.sendBeacon) {
+  navigator.sendBeacon(GAS_URL, payload);
+} else {
+  fetch(GAS_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    body: payload,
+    keepalive: true
+  }).catch(() => {});
+}
+
+// ログの応答を待たずに遷移
+window.location.replace(target.href);
 
     })();
   </script>
