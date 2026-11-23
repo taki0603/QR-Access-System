@@ -1,0 +1,84 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>アクセス処理</title>
+</head>
+
+<body>
+  <p>アクセスを処理しています。</p>
+  <p>このアクセスでは日時とQR識別番号を記録します。</p>
+
+  <script src="./config.js"></script>
+
+  <script>
+    (() => {
+      const params = new URLSearchParams(
+        window.location.search
+      );
+
+      const logId = params.get('id');
+
+      // QRコードのIDを確認
+      if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
+        document.body.innerHTML =
+          '<p>QRコードが正しくありません。</p>';
+        return;
+      }
+
+      // 遷移先を取得
+      const destination = SITE_MAP[logId];
+
+      if (!destination) {
+        document.body.innerHTML =
+          '<p>遷移先が登録されていません。</p>';
+        return;
+      }
+
+      // URLの安全性確認
+      let target;
+
+      try {
+        target = new URL(destination);
+
+        if (target.protocol !== 'https:') {
+          throw new Error('HTTPS required');
+        }
+      } catch (error) {
+        document.body.innerHTML =
+          '<p>遷移先URLが正しくありません。</p>';
+        return;
+      }
+
+      // ログ送信
+      const payload = new Blob(
+        [JSON.stringify({
+          logId: logId
+        })],
+        {
+          type: 'text/plain;charset=UTF-8'
+        }
+      );
+
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(GAS_URL, payload);
+      } else {
+        fetch(GAS_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          body: payload,
+          keepalive: true
+        }).catch(() => {});
+      }
+
+      // ログの応答を待たずに遷移
+      window.location.replace(target.href);
+
+    })();
+  </script>
+</body>
+</html>
