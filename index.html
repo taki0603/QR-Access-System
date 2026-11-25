@@ -11,25 +11,38 @@
 <script>
 'use strict';
 
-// GASのWebアプリURL
 const GAS_URL =
 'https://script.google.com/macros/s/AKfycbzWWvOhIOTmdoJYa9RrTyKHIa6yis5Qeqd1bk_Q_zXZQkuaBZvQ9Wk96eEg_ZGpiG8Y/exec';
 
-// SitesシートからGASが自動更新する部分
-const SITE_MAP = {"QR001":{"name":"パンフ一覧","url":"https://cinemasoumu2025.github.io/cinema-panphlet/"},"QR002":{"name":"WaterSupply","url":"https://s2h2o.org/student-stories/"},"QR003":{"name":"パンフ一覧","url":"https://cinemasoumu2025.github.io/cinema-panphlet/"},"QR004":{"name":"WaterSupply","url":"https://s2h2o.org/student-stories/"}};
+const SITE_MAP = {
+  "QR001": {
+    "name": "パンフ一覧",
+    "url": "https://cinemasoumu2025.github.io/cinema-panphlet/"
+  },
+  "QR002": {
+    "name": "WaterSupply",
+    "url": "https://s2h2o.org/student-stories/"
+  },
+  "QR003": {
+    "name": "パンフ一覧",
+    "url": "https://cinemasoumu2025.github.io/cinema-panphlet/"
+  },
+  "QR004": {
+    "name": "WaterSupply",
+    "url": "https://s2h2o.org/student-stories/"
+  }
+};
 
-// 重複ログを抑制する時間：24時間
 const DEDUPE_TIME = 24 * 60 * 60 * 1000;
 
-// QRコードIDを取得
 const params = new URLSearchParams(
   window.location.search
 );
 
 const logId = params.get('id');
 
-// QRコードIDを確認
 if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
+
   document.body.textContent =
     'QRコードが正しくありません。';
 
@@ -38,12 +51,13 @@ if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
   const site = SITE_MAP[logId];
 
   if (!site || !site.url) {
+
     document.body.textContent =
       '登録されていないQRコードです。';
 
   } else {
 
-    let target = null;
+    let target;
 
     try {
       target = new URL(site.url);
@@ -53,17 +67,18 @@ if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
       }
 
     } catch (error) {
+
       document.body.textContent =
         '遷移先URLが正しくありません。';
+
     }
 
     if (target) {
 
-      // 24時間以内の同じQRの再記録を抑制
-      let shouldLog = true;
-
       const storageKey = 'QR_LOG_' + logId;
       const now = Date.now();
+
+      let shouldLog = true;
 
       try {
         const lastTime = Number(
@@ -75,67 +90,50 @@ if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
           now - lastTime < DEDUPE_TIME
         ) {
           shouldLog = false;
-        } else {
-          localStorage.setItem(
-            storageKey,
-            String(now)
-          );
         }
 
       } catch (error) {
-        // ストレージが使えない場合は記録を試みる
         shouldLog = true;
       }
 
-      // ログは非同期送信。完了を待たない
       if (shouldLog) {
 
-        
-const payload = JSON.stringify({
-  logId: logId
-});
+        const payload = new Blob(
+          [JSON.stringify({ logId: logId })],
+          {
+            type: 'text/plain;charset=UTF-8'
+          }
+        );
 
-fetch(GAS_URL, {
-  method: 'POST',
-  mode: 'no-cors',
-  headers: {
-    'Content-Type': 'text/plain;charset=UTF-8'
-  },
-  body: payload,
-  keepalive: true
-}).catch(error => {
-  console.error('ログ送信失敗', error);
-});
-
+        let queued = false;
 
         if (navigator.sendBeacon) {
+          queued = navigator.sendBeacon(
+            GAS_URL,
+            payload
+          );
+        }
 
-          const accepted =
-            navigator.sendBeacon(GAS_URL, payload);
-
-          if (!accepted) {
-            fetch(GAS_URL, {
-              method: 'POST',
-              mode: 'no-cors',
-              body: payload,
-              keepalive: true
-            }).catch(() => {});
-          }
-
-        } else {
-
+        if (!queued) {
           fetch(GAS_URL, {
             method: 'POST',
             mode: 'no-cors',
             body: payload,
             keepalive: true
           }).catch(() => {});
-
         }
+
+        // 送信受付時点で重複抑制
+        try {
+          localStorage.setItem(
+            storageKey,
+            String(now)
+          );
+        } catch (error) {}
       }
 
-      // 中継ページを履歴に残さず即時遷移
       window.location.replace(target.href);
+
     }
   }
 }
