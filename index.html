@@ -3,94 +3,226 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1">
-
-  <title>アクセス処理</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title></title>
 </head>
 
 <body>
-  <script src="./config.js"></script>
 
-  <script>
-    (() => {
-      const params = new URLSearchParams(
-        window.location.search
-      );
+<script>
 
-      const logId = params.get('id');
+// =====================================
+// 1. GAS設定
+// =====================================
 
-      // QRコードのIDを確認
-      if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
-        document.body.innerHTML =
-          '<p>QRコードが正しくありません。</p>';
-        return;
-      }
+const GAS_URL =
+'https://script.google.com/macros/s/AKfycbxF11Gy3s_DIL2iB7_VLo9J4Mj89nq7nzRXEc-7SuwKo8AY4YvIjmh-it_2o8wExD8g/exec';
 
-      // 遷移先を取得
-      const destination = SITE_MAP[logId];
 
-      if (!destination) {
-        document.body.innerHTML =
-          '<p>遷移先が登録されていません。</p>';
-        return;
-      }
+// =====================================
+// 2. サイト対応表
+// スプレッドシートSitesシートを元に作成
+// =====================================
 
-      // URLの安全性確認
-      let target;
+const SITE_MAP = {
 
-      try {
-        target = new URL(destination);
+  QR001: {
+    name: '映画パンフレット',
+    url: 'https://cinemasoumu2025.github.io/cinema-panphlet/'
+  },
 
-        if (target.protocol !== 'https:') {
-          throw new Error('HTTPS required');
-        }
-      } catch (error) {
-        document.body.innerHTML =
-          '<p>遷移先URLが正しくありません。</p>';
-        return;
-      }
+  QR002: {
+    name: '学生の物語',
+    url: 'https://s2h2o.org/student-stories/'
+  },
 
-// ブラウザごとの匿名IDを取得・発行
-function getVisitorId() {
-  let id = localStorage.getItem('visitor_id');
+  QR003: {
+    name: 'サイトC',
+    url: ''
+  },
 
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem('visitor_id', id);
+  QR004: {
+    name: 'サイトD',
+    url: ''
+  },
+
+  QR005: {
+    name: 'サイトE',
+    url: ''
+
   }
 
-  return id;
-}
+  // QR006〜QR500も同じ形式で追加
 
-const visitorId = getVisitorId();
+};
 
-// ログ送信
-const payload = new Blob(
-  [JSON.stringify({
-    logId: logId,
-    visitorId: visitorId
-  })],
-  {
-    type: 'text/plain;charset=UTF-8'
-  }
+
+// =====================================
+// 3. 設定
+// =====================================
+
+// 同じQRの再記録を抑制する時間
+const DEDUPE_TIME = 24 * 60 * 60 * 1000;
+
+
+// =====================================
+// 4. QRコードID取得
+// =====================================
+
+const params = new URLSearchParams(
+  window.location.search
 );
 
-if (navigator.sendBeacon) {
-  navigator.sendBeacon(GAS_URL, payload);
+const logId = params.get('id');
+
+
+// =====================================
+// 5. 遷移先確認
+// =====================================
+
+if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
+
+  document.body.textContent =
+    'QRコードが正しくありません。';
+
 } else {
-  fetch(GAS_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    body: payload,
-    keepalive: true
-  }).catch(() => {});
+
+  const site = SITE_MAP[logId];
+
+  if (!site || !site.url) {
+
+    document.body.textContent =
+      '登録されていないQRコードです。';
+
+  } else {
+
+    let target;
+
+    try {
+
+      target = new URL(site.url);
+
+      if (target.protocol !== 'https:') {
+        throw new Error('HTTPS required');
+      }
+
+    } catch (error) {
+
+      document.body.textContent =
+        '遷移先URLが正しくありません。';
+
+    }
+
+
+    // =====================================
+    // 6. 重複アクセス判定
+    // =====================================
+
+    if (target) {
+
+      const now = Date.now();
+
+      const storageKey = 'QR_LOG_' + logId;
+
+      let shouldLog = true;
+
+      try {
+
+        const lastTime = Number(
+          localStorage.getItem(storageKey)
+        );
+
+        if (
+          lastTime > 0 &&
+          now - lastTime < DEDUPE_TIME
+        ) {
+
+          shouldLog = false;
+
+        } else {
+
+          // 送信開始前に記録済み状態にする
+          localStorage.setItem(
+            storageKey,
+            String(now)
+          );
+
+        }
+
+      } catch (error) {
+
+        // ストレージが利用できない場合は
+        // 重複判定を保証できないため記録を試みる
+
+        shouldLog = true;
+
+      }
+
+
+      // =====================================
+      // 7. ログ送信
+      // =====================================
+
+      if (shouldLog) {
+
+        const payload = new Blob(
+
+          [JSON.stringify({
+
+            logId: logId
+
+          })],
+
+          {
+            type: 'text/plain;charset=UTF-8'
+          }
+
+        );
+
+
+        if (navigator.sendBeacon) {
+
+          const accepted =
+            navigator.sendBeacon(GAS_URL, payload);
+
+          if (!accepted) {
+
+            fetch(GAS_URL, {
+              method: 'POST',
+              mode: 'no-cors',
+              body: payload,
+              keepalive: true
+            }).catch(() => {});
+
+          }
+
+        } else {
+
+          fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: payload,
+            keepalive: true
+          }).catch(() => {});
+
+        }
+
+      }
+
+
+      // =====================================
+      // 8. 即時遷移
+      // =====================================
+
+      window.location.replace(target.href);
+
+    }
+
+  }
+
 }
 
-// ログの応答を待たずに遷移
-window.location.replace(target.href);
+</script>
 
-    })();
-  </script>
 </body>
 </html>
