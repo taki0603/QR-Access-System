@@ -1,90 +1,54 @@
 
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title></title>
+  <title>QR Access</title>
 </head>
-
 <body>
-
 <script>
 
 // =====================================
-// 1. GAS設定
+// GAS設定
 // =====================================
 
 const GAS_URL =
-'https://script.google.com/macros/s/AKfycbxgfb34cHyBOEweLgWlsmCdMkxCIuyt-ISh3qtSQSh9pM953id6hsjp478y5Cl7oKay/exec';
+'https://script.google.com/macros/s/AKfycbzHXkOS6xl5XrvthxfKRDe7iWLh-jueWb5PY5A22vsZ24jlzyGNC6EbVmtgL8OsSUvi/exec';
 
 
 // =====================================
-// 2. サイト対応表
-// スプレッドシートSitesシートを元に作成
+// Sites自動更新領域
+// GASがこの部分を自動書き換えします
 // =====================================
 
-const SITE_MAP = {
-
-  QR001: {
-    name: '映画パンフレット',
-    url: 'https://cinemasoumu2025.github.io/cinema-panphlet/'
-  },
-
-  QR002: {
-    name: '学生の物語',
-    url: 'https://s2h2o.org/student-stories/'
-  },
-
-  QR003: {
-    name: 'サイトC',
-    url: ''
-  },
-
-  QR004: {
-    name: 'サイトD',
-    url: ''
-  },
-
-  QR005: {
-    name: 'サイトE',
-    url: ''
-
-  }
-
-  // QR006〜QR500も同じ形式で追加
-
-};
+// === SITE_MAP_START ===
+const SITE_MAP = {};
+// === SITE_MAP_END ===
 
 
 // =====================================
-// 3. 設定
+// 設定
 // =====================================
 
-// 同じQRの再記録を抑制する時間
 const DEDUPE_TIME = 24 * 60 * 60 * 1000;
 
 
 // =====================================
-// 4. QRコードID取得
+// QRコードID取得
 // =====================================
 
-const params = new URLSearchParams(
-  window.location.search
-);
-
+const params = new URLSearchParams(location.search);
 const logId = params.get('id');
 
 
 // =====================================
-// 5. 遷移先確認
+// 遷移処理
 // =====================================
 
 if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
 
-  document.body.textContent =
-    'QRコードが正しくありません。';
+  document.body.textContent = 'QRコードが正しくありません。';
 
 } else {
 
@@ -92,15 +56,13 @@ if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
 
   if (!site || !site.url) {
 
-    document.body.textContent =
-      '登録されていないQRコードです。';
+    document.body.textContent = '登録されていないQRコードです。';
 
   } else {
 
-    let target;
+    let target = null;
 
     try {
-
       target = new URL(site.url);
 
       if (target.protocol !== 'https:') {
@@ -108,122 +70,76 @@ if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
       }
 
     } catch (error) {
-
-      document.body.textContent =
-        '遷移先URLが正しくありません。';
-
+      document.body.textContent = '遷移先URLが正しくありません。';
     }
 
 
-    // =====================================
-    // 6. 重複アクセス判定
-    // =====================================
-
     if (target) {
 
-      const now = Date.now();
-
-      const storageKey = 'QR_LOG_' + logId;
+      // =====================================
+      // 24時間以内の重複ログ抑制
+      // =====================================
 
       let shouldLog = true;
+      const now = Date.now();
+      const storageKey = 'QR_LOG_' + logId;
 
       try {
 
-        const lastTime = Number(
-          localStorage.getItem(storageKey)
-        );
+        const lastTime = Number(localStorage.getItem(storageKey));
 
-        if (
-          lastTime > 0 &&
-          now - lastTime < DEDUPE_TIME
-        ) {
-
+        if (lastTime > 0 && now - lastTime < DEDUPE_TIME) {
           shouldLog = false;
-
         } else {
-
-          // 送信開始前に記録済み状態にする
-          localStorage.setItem(
-            storageKey,
-            String(now)
-          );
-
+          localStorage.setItem(storageKey, String(now));
         }
 
       } catch (error) {
-
-        // ストレージが利用できない場合は
-        // 重複判定を保証できないため記録を試みる
-
         shouldLog = true;
-
       }
 
 
       // =====================================
-      // 7. ログ送信
+      // ログを非同期送信
       // =====================================
 
       if (shouldLog) {
 
         const payload = new Blob(
-
-          [JSON.stringify({
-
-            logId: logId
-
-          })],
-
-          {
-            type: 'text/plain;charset=UTF-8'
-          }
-
+          [JSON.stringify({ logId: logId })],
+          { type: 'text/plain;charset=UTF-8' }
         );
 
+        let sent = false;
 
-        if (navigator.sendBeacon) {
-
-          const accepted =
-            navigator.sendBeacon(GAS_URL, payload);
-
-          if (!accepted) {
-
-            fetch(GAS_URL, {
-              method: 'POST',
-              mode: 'no-cors',
-              body: payload,
-              keepalive: true
-            }).catch(() => {});
-
+        try {
+          if (navigator.sendBeacon) {
+            sent = navigator.sendBeacon(GAS_URL, payload);
           }
+        } catch (error) {
+          sent = false;
+        }
 
-        } else {
-
+        if (!sent) {
           fetch(GAS_URL, {
             method: 'POST',
             mode: 'no-cors',
             body: payload,
             keepalive: true
           }).catch(() => {});
-
         }
-
       }
 
 
       // =====================================
-      // 8. 即時遷移
+      // 即時遷移
       // =====================================
 
-      window.location.replace(target.href);
-
+      location.replace(target.href);
     }
-
   }
-
 }
 
 </script>
-
 </body>
 </html>
