@@ -2,61 +2,44 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>QR Access</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR Access</title>
 </head>
 <body>
+
 <script>
+'use strict';
 
-// =====================================
-// GAS設定
-// =====================================
-
+// GASのWebアプリURL
 const GAS_URL =
-'https://script.google.com/macros/s/AKfycbzHXkOS6xl5XrvthxfKRDe7iWLh-jueWb5PY5A22vsZ24jlzyGNC6EbVmtgL8OsSUvi/exec';
+'https://script.google.com/macros/s/AKfycbzWWvOhIOTmdoJYa9RrTyKHIa6yis5Qeqd1bk_Q_zXZQkuaBZvQ9Wk96eEg_ZGpiG8Y/exec';
 
-
-// =====================================
-// Sites自動更新領域
-// GASがこの部分を自動書き換えします
-// =====================================
-
-// === SITE_MAP_START ===
+// SitesシートからGASが自動更新する部分
 const SITE_MAP = {};
-// === SITE_MAP_END ===
 
-
-// =====================================
-// 設定
-// =====================================
-
+// 重複ログを抑制する時間：24時間
 const DEDUPE_TIME = 24 * 60 * 60 * 1000;
 
+// QRコードIDを取得
+const params = new URLSearchParams(
+  window.location.search
+);
 
-// =====================================
-// QRコードID取得
-// =====================================
-
-const params = new URLSearchParams(location.search);
 const logId = params.get('id');
 
-
-// =====================================
-// 遷移処理
-// =====================================
-
+// QRコードIDを確認
 if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
-
-  document.body.textContent = 'QRコードが正しくありません。';
+  document.body.textContent =
+    'QRコードが正しくありません。';
 
 } else {
 
   const site = SITE_MAP[logId];
 
   if (!site || !site.url) {
-
-    document.body.textContent = '登録されていないQRコードです。';
+    document.body.textContent =
+      '登録されていないQRコードです。';
 
   } else {
 
@@ -70,76 +53,84 @@ if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
       }
 
     } catch (error) {
-      document.body.textContent = '遷移先URLが正しくありません。';
+      document.body.textContent =
+        '遷移先URLが正しくありません。';
     }
-
 
     if (target) {
 
-      // =====================================
-      // 24時間以内の重複ログ抑制
-      // =====================================
-
+      // 24時間以内の同じQRの再記録を抑制
       let shouldLog = true;
-      const now = Date.now();
+
       const storageKey = 'QR_LOG_' + logId;
+      const now = Date.now();
 
       try {
+        const lastTime = Number(
+          localStorage.getItem(storageKey)
+        );
 
-        const lastTime = Number(localStorage.getItem(storageKey));
-
-        if (lastTime > 0 && now - lastTime < DEDUPE_TIME) {
+        if (
+          lastTime > 0 &&
+          now - lastTime < DEDUPE_TIME
+        ) {
           shouldLog = false;
         } else {
-          localStorage.setItem(storageKey, String(now));
+          localStorage.setItem(
+            storageKey,
+            String(now)
+          );
         }
 
       } catch (error) {
+        // ストレージが使えない場合は記録を試みる
         shouldLog = true;
       }
 
-
-      // =====================================
-      // ログを非同期送信
-      // =====================================
-
+      // ログは非同期送信。完了を待たない
       if (shouldLog) {
 
         const payload = new Blob(
-          [JSON.stringify({ logId: logId })],
-          { type: 'text/plain;charset=UTF-8' }
+          [JSON.stringify({
+            logId: logId
+          })],
+          {
+            type: 'text/plain;charset=UTF-8'
+          }
         );
 
-        let sent = false;
+        if (navigator.sendBeacon) {
 
-        try {
-          if (navigator.sendBeacon) {
-            sent = navigator.sendBeacon(GAS_URL, payload);
+          const accepted =
+            navigator.sendBeacon(GAS_URL, payload);
+
+          if (!accepted) {
+            fetch(GAS_URL, {
+              method: 'POST',
+              mode: 'no-cors',
+              body: payload,
+              keepalive: true
+            }).catch(() => {});
           }
-        } catch (error) {
-          sent = false;
-        }
 
-        if (!sent) {
+        } else {
+
           fetch(GAS_URL, {
             method: 'POST',
             mode: 'no-cors',
             body: payload,
             keepalive: true
           }).catch(() => {});
+
         }
       }
 
-
-      // =====================================
-      // 即時遷移
-      // =====================================
-
-      location.replace(target.href);
+      // 中継ページを履歴に残さず即時遷移
+      window.location.replace(target.href);
     }
   }
 }
-
 </script>
+
 </body>
 </html>
