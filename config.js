@@ -1,4 +1,4 @@
 
 const GAS_URL =
-  'https://script.google.com/macros/s/AKfycbyk70cyOVX8JbqiT0-wwJsrdMzlLfSfONMJssjgDekiWb3_rTyv7Nxblc1Hgkv7patE/exec';
+  'https://script.google.com/macros/s/AKfycbxgfb34cHyBOEweLgWlsmCdMkxCIuyt-ISh3qtSQSh9pM953id6hsjp478y5Cl7oKay/exec';
 
