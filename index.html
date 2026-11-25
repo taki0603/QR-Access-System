@@ -90,14 +90,23 @@ if (!logId || !/^QR[0-9]{3}$/.test(logId)) {
       // ログは非同期送信。完了を待たない
       if (shouldLog) {
 
-        const payload = new Blob(
-          [JSON.stringify({
-            logId: logId
-          })],
-          {
-            type: 'text/plain;charset=UTF-8'
-          }
-        );
+        
+const payload = JSON.stringify({
+  logId: logId
+});
+
+fetch(GAS_URL, {
+  method: 'POST',
+  mode: 'no-cors',
+  headers: {
+    'Content-Type': 'text/plain;charset=UTF-8'
+  },
+  body: payload,
+  keepalive: true
+}).catch(error => {
+  console.error('ログ送信失敗', error);
+});
+
 
         if (navigator.sendBeacon) {
 
